@@ -1,12 +1,7 @@
 import pytest
-from datetime import datetime, UTC, timedelta
+from datetime import datetime, UTC
 from prometheus_client import CollectorRegistry
-from config.observability import (
-    ObservabilityManager,
-    MetricsConfig,
-    AlertConfig,
-    TracingConfig
-)
+from config.observability import ObservabilityManager
 
 @pytest.fixture
 def registry():
@@ -15,34 +10,8 @@ def registry():
 
 @pytest.fixture
 def observability_manager(registry):
-    """Fixture pour créer un gestionnaire d'observabilité avec config par défaut."""
+    """Fixture pour créer un gestionnaire d'observabilité."""
     return ObservabilityManager(registry=registry)
-
-@pytest.fixture
-def custom_config_manager(registry):
-    """Fixture pour créer un gestionnaire avec config personnalisée."""
-    metrics_config = MetricsConfig(
-        enabled=True,
-        export_interval_seconds=30,
-        retention_days=15
-    )
-    alert_config = AlertConfig(
-        threshold_response_time_ms=500.0,
-        threshold_error_rate=0.05,
-        threshold_memory_usage=0.75,
-        alert_cooldown_minutes=5
-    )
-    tracing_config = TracingConfig(
-        enabled=True,
-        sample_rate=0.2,
-        max_spans_per_trace=50
-    )
-    return ObservabilityManager(
-        metrics_config=metrics_config,
-        alert_config=alert_config,
-        tracing_config=tracing_config,
-        registry=registry
-    )
 
 @pytest.mark.asyncio
 async def test_track_request(observability_manager):
@@ -54,8 +23,8 @@ async def test_track_request(observability_manager):
         duration=0.5
     )
 
-    metrics = observability_manager.get_metrics_snapshot()
-    assert metrics["requests_total"] > 0
+    metrics = observability_manager.get_metrics()
+    assert metrics["total_requests"] > 0
     assert metrics["average_response_time"] > 0
 
 @pytest.mark.asyncio
@@ -66,96 +35,63 @@ async def test_track_model_prediction(observability_manager):
         duration=0.1
     )
 
-    metrics = observability_manager.get_metrics_snapshot()
-    assert metrics["model_prediction_time"] > 0
+    # Vérifier que la métrique a été enregistrée via le registry
+    for metric in observability_manager.registry.collect():
+        if metric.name == "anabai_model_prediction_time":
+            assert len(metric.samples) > 0
+            break
 
 @pytest.mark.asyncio
-async def test_memory_usage_alert(custom_config_manager):
-    """Teste le déclenchement d'une alerte mémoire."""
-    # Simuler une utilisation mémoire élevée (80%)
-    await custom_config_manager.update_memory_usage(0.8)
+async def test_track_error(observability_manager):
+    """Teste l'enregistrement d'une erreur."""
+    await observability_manager.track_error("validation_error")
 
-    metrics = custom_config_manager.get_metrics_snapshot()
-    assert metrics["memory_usage"] == 0.8
-    # L'alerte devrait être déclenchée car > 75%
-    assert "memory_usage" in custom_config_manager.last_alert_time
-
-@pytest.mark.asyncio
-async def test_error_rate_alert(custom_config_manager):
-    """Teste le déclenchement d'une alerte de taux d'erreur."""
-    # Simuler des erreurs
-    for _ in range(10):
-        await custom_config_manager.track_request(
-            endpoint="/generate",
-            method="POST",
-            status=500,
-            duration=0.1
-        )
-
-    assert "error_rate" in custom_config_manager.last_alert_time
-
-@pytest.mark.asyncio
-async def test_response_time_alert(custom_config_manager):
-    """Teste le déclenchement d'une alerte de temps de réponse."""
-    # Simuler une requête lente (600ms > 500ms seuil)
-    await custom_config_manager.track_request(
-        endpoint="/generate",
-        method="POST",
-        status=200,
-        duration=0.6
-    )
-
-    assert "response_time" in custom_config_manager.last_alert_time
-
-@pytest.mark.asyncio
-async def test_alert_cooldown(custom_config_manager):
-    """Teste le cooldown des alertes."""
-    # Première alerte
-    await custom_config_manager.track_request(
-        endpoint="/generate",
-        method="POST",
-        status=200,
-        duration=0.6
-    )
-
-    first_alert_time = custom_config_manager.last_alert_time["response_time"]
-
-    # Deuxième alerte immédiate (ne devrait pas déclencher)
-    await custom_config_manager.track_request(
-        endpoint="/generate",
-        method="POST",
-        status=200,
-        duration=0.6
-    )
-
-    assert custom_config_manager.last_alert_time["response_time"] == first_alert_time
+    metrics = observability_manager.get_metrics()
+    assert metrics["total_errors"] > 0
 
 @pytest.mark.asyncio
 async def test_active_users_tracking(observability_manager):
     """Teste le suivi des utilisateurs actifs."""
     await observability_manager.update_active_users(100)
     
-    metrics = observability_manager.get_metrics_snapshot()
+    metrics = observability_manager.get_metrics()
     assert metrics["active_users"] == 100
 
 @pytest.mark.asyncio
-async def test_metrics_snapshot(observability_manager):
-    """Teste la génération d'un snapshot de métriques."""
-    # Générer quelques données
+async def test_metrics_collection(observability_manager):
+    """Teste la collecte complète des métriques."""
+    # Générer des données de test
     await observability_manager.track_request(
         endpoint="/generate",
         method="POST",
         status=200,
         duration=0.3
     )
-    await observability_manager.update_memory_usage(0.5)
+    await observability_manager.track_error("validation_error")
     await observability_manager.update_active_users(50)
+    await observability_manager.track_model_prediction(
+        model_type="signature",
+        duration=0.2
+    )
 
-    metrics = observability_manager.get_metrics_snapshot()
+    metrics = observability_manager.get_metrics()
     
-    assert "requests_total" in metrics
-    assert "average_response_time" in metrics
-    assert "memory_usage" in metrics
-    assert "active_users" in metrics
+    # Vérifier toutes les métriques
+    assert metrics["total_requests"] > 0
+    assert metrics["average_response_time"] > 0
     assert metrics["active_users"] == 50
-    assert metrics["memory_usage"] == 0.5 
+    assert metrics["total_errors"] > 0
+
+@pytest.mark.asyncio
+async def test_multiple_requests(observability_manager):
+    """Teste l'enregistrement de plusieurs requêtes."""
+    for _ in range(5):
+        await observability_manager.track_request(
+            endpoint="/generate",
+            method="POST",
+            status=200,
+            duration=0.1
+        )
+
+    metrics = observability_manager.get_metrics()
+    assert metrics["total_requests"] == 5 

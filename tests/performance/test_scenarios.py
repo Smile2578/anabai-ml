@@ -3,6 +3,7 @@ from typing import Dict, List
 import asyncio
 import pytest
 from uuid import uuid4
+from prometheus_client import CollectorRegistry
 
 from config.observability import ObservabilityManager
 
@@ -155,8 +156,14 @@ class ConcurrentUsersScenario(PerformanceScenario):
         await self.observability.update_active_users(0)
 
 @pytest.fixture
-def observability_manager():
-    return ObservabilityManager()
+def registry():
+    """Fixture pour créer un nouveau registry Prometheus pour chaque test."""
+    return CollectorRegistry()
+
+@pytest.fixture
+def observability_manager(registry):
+    """Fixture pour créer un ObservabilityManager avec un registry unique."""
+    return ObservabilityManager(registry=registry)
 
 @pytest.mark.asyncio
 async def test_generate_itinerary_performance(observability_manager):
