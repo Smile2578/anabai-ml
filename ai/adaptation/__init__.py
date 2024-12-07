@@ -5,7 +5,12 @@ from .real_time_adapter import (
     WeatherCondition,
     CrowdLevel,
     LocalEvent,
-    AdaptationResult
+    AdaptationResult as RealTimeAdaptationResult
+)
+from .adaptation_engine import (
+    AdaptationEngine,
+    AdaptationDecision,
+    AdaptationResult as EngineAdaptationResult
 )
 
 __all__ = [
@@ -13,5 +18,8 @@ __all__ = [
     'WeatherCondition',
     'CrowdLevel',
     'LocalEvent',
-    'AdaptationResult'
+    'RealTimeAdaptationResult',
+    'AdaptationEngine',
+    'AdaptationDecision',
+    'EngineAdaptationResult'
 ] 

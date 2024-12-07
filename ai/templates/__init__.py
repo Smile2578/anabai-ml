@@ -3,6 +3,7 @@
 from .signature_template import SignatureTemplate, SignatureItinerary, ItineraryPlace
 from .fusion_template import FusionTemplate, FusionItinerary
 from .ai_plus_template import AIPlusTemplate, AIPlusItinerary, AIRecommendation
+from .template_selector import TemplateSelector, TemplateSelectionCriteria
 
 __all__ = [
     'SignatureTemplate',
@@ -12,5 +13,7 @@ __all__ = [
     'FusionItinerary',
     'AIPlusTemplate',
     'AIPlusItinerary',
-    'AIRecommendation'
+    'AIRecommendation',
+    'TemplateSelector',
+    'TemplateSelectionCriteria'
 ] 
