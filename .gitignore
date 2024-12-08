@@ -1,5 +1,6 @@
 # Fichiers sensibles
 .env
+.env.*
 *.pem
 *.key
 
@@ -35,3 +36,15 @@ wheels/
 .coverage
 htmlcov/
 .pytest_cache/
+tests/
+load_tests/
+
+# Autres
+.DS_Store
+*.log
+*.log.*
+*.log.*.*
+*.log.*.*.*
+*.log.*.*.*.*
+*.log.*.*.*.*.*
+

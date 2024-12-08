@@ -42,6 +42,17 @@ export const options = {
 // Configuration de l'environnement
 const BASE_URL = __ENV.API_URL || 'http://localhost:8000';
 
+// Données de test
+const scoreRequest = {
+    text: "Ceci est un texte de test pour le calcul du score",
+    context: "Contexte de test pour l'analyse"
+};
+
+const recommendationRequest = {
+    user_id: "test-user-123",
+    text: "Texte pour obtenir des recommandations"
+};
+
 // Fonctions utilitaires
 function checkResponse(response) {
   return check(response, {
@@ -52,35 +63,40 @@ function checkResponse(response) {
 
 // Scénarios de test
 export default function () {
+  const params = {
+    headers: {
+      'Content-Type': 'application/json',
+    }
+  };
+
   // Test du endpoint de base score
-  const baseScoreResponse = http.post(`${BASE_URL}/score/base`, {
-    text: 'Exemple de texte pour le test de charge',
-    context: 'Test de performance',
-  });
-  
+  const baseScoreResponse = http.post(
+    `${BASE_URL}/score/base`,
+    JSON.stringify(scoreRequest),
+    params
+  );
   let checksBaseScore = checkResponse(baseScoreResponse);
   errorRate.add(!checksBaseScore);
 
   sleep(1);
 
   // Test du endpoint de score contextuel
-  const contextualScoreResponse = http.post(`${BASE_URL}/score/contextual`, {
-    text: 'Exemple de texte pour le test de charge',
-    context: 'Test de performance',
-    additionalContext: 'Contexte supplémentaire',
-  });
-
+  const contextualScoreResponse = http.post(
+    `${BASE_URL}/score/contextual`,
+    JSON.stringify(scoreRequest),
+    params
+  );
   let checksContextual = checkResponse(contextualScoreResponse);
   errorRate.add(!checksContextual);
 
   sleep(1);
 
   // Test du endpoint de recommandation
-  const recommendationResponse = http.post(`${BASE_URL}/recommendations`, {
-    userId: 'test-user',
-    text: 'Exemple de texte pour le test de charge',
-  });
-
+  const recommendationResponse = http.post(
+    `${BASE_URL}/recommendations`,
+    JSON.stringify(recommendationRequest),
+    params
+  );
   let checksRecommendation = checkResponse(recommendationResponse);
   errorRate.add(!checksRecommendation);
 

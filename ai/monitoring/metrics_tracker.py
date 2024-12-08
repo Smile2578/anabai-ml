@@ -4,6 +4,7 @@ from uuid import UUID
 import numpy as np
 from motor.motor_asyncio import AsyncIOMotorClient
 from ai.learning.data_collector import DataCollector
+from prometheus_client import Counter, Histogram, Gauge, CollectorRegistry
 
 MetricType = Literal[
     "accuracy",
@@ -30,7 +31,8 @@ class MetricsTracker:
     def __init__(
         self,
         data_collector: DataCollector,
-        window_size_hours: int = 24
+        window_size_hours: int = 24,
+        registry: CollectorRegistry | None = None
     ) -> None:
         if window_size_hours < 1:
             raise ValueError("La taille de la fenêtre doit être d'au moins 1 heure")
@@ -45,6 +47,48 @@ class MetricsTracker:
             "recommendation_diversity": 0.7,
             "adaptation_speed": 0.9
         }
+
+        # Initialisation des métriques Prometheus
+        self.registry = registry or CollectorRegistry()
+        
+        # Compteurs
+        self.request_counter = Counter(
+            'anabai_requests_total',
+            'Nombre total de requêtes',
+            registry=self.registry
+        )
+        self.error_counter = Counter(
+            'anabai_errors_total',
+            'Nombre total d\'erreurs',
+            ['error_type'],
+            registry=self.registry
+        )
+
+        # Histogrammes
+        self.response_time_histogram = Histogram(
+            'anabai_response_time_seconds',
+            'Distribution des temps de réponse',
+            buckets=(0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+            registry=self.registry
+        )
+        self.score_histogram = Histogram(
+            'anabai_score_distribution',
+            'Distribution des scores',
+            buckets=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0),
+            registry=self.registry
+        )
+
+        # Jauges
+        self.active_users = Gauge(
+            'anabai_active_users',
+            'Nombre d\'utilisateurs actifs',
+            registry=self.registry
+        )
+        self.system_load = Gauge(
+            'anabai_system_load',
+            'Charge système',
+            registry=self.registry
+        )
 
     async def track_metric(
         self,
@@ -61,15 +105,69 @@ class MetricsTracker:
         if not isinstance(value, (int, float)):
             raise ValueError("La valeur doit être numérique")
 
+        # Stockage MongoDB
         metric_data = {
             "type": metric_type,
             "value": float(value),
             "context": context or {},
             "timestamp": datetime.now(UTC)
         }
-
         await self.data_collector.metrics_collection.insert_one(metric_data)
         self.current_metrics[metric_type] = value
+
+        # Mise à jour des métriques Prometheus
+        if metric_type == "response_time":
+            self.response_time_histogram.observe(value)
+        elif metric_type == "accuracy":
+            self.score_histogram.observe(value)
+
+    async def track_request(
+        self,
+        endpoint: str,
+        method: str,
+        status: int,
+        duration: float
+    ) -> None:
+        """
+        Suit une requête HTTP.
+        """
+        self.request_counter.inc()
+        self.response_time_histogram.observe(duration)
+        
+        if status >= 400:
+            self.error_counter.labels(error_type=f"http_{status}").inc()
+
+    async def track_error(self, error_type: str) -> None:
+        """
+        Enregistre une erreur.
+        """
+        self.error_counter.labels(error_type=error_type).inc()
+
+    async def update_active_users(self, count: int) -> None:
+        """
+        Met à jour le nombre d'utilisateurs actifs.
+        """
+        self.active_users.set(count)
+
+    async def update_system_load(self, load: float) -> None:
+        """
+        Met à jour la charge système.
+        """
+        self.system_load.set(load)
+
+    def get_prometheus_metrics(self) -> Dict[str, float]:
+        """
+        Récupère les métriques Prometheus actuelles.
+        """
+        return {
+            "total_requests": self.request_counter._value.get(),
+            "total_errors": sum(
+                counter._value.get()
+                for counter in self.error_counter._metrics.values()
+            ),
+            "active_users": self.active_users._value.get(),
+            "system_load": self.system_load._value.get()
+        }
 
     async def get_metric_history(
         self,
